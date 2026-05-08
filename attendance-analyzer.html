@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Attendance Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Syne:wght@700;800;900&family=DM+Sans:wght@400;500;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #21262d;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --accent2: #3fb950;
+    --warn: #f0883e;
+    --danger: #f85149;
+    --pink: #ff7eb6;
+    --blue: #79c0ff;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --radius: 10px;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: linear-gradient(135deg, #0d1117 0%, #161b44 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .logo { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 900; letter-spacing: -0.5px; }
+  .logo span { color: var(--accent); }
+  .badge-pill {
+    font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    background: rgba(88,166,255,.12); color: var(--accent); border: 1px solid rgba(88,166,255,.25);
+    padding: 2px 10px; border-radius: 999px;
+  }
+  .filename { font-size: 11px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; margin-top: 2px; }
+  .header-right { display: flex; gap: 8px; }
+
+  btn, .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: var(--radius);
+    font-size: 12px; font-weight: 700; font-family: 'DM Sans', sans-serif;
+    cursor: pointer; border: none; transition: all .15s;
+  }
+  .btn-ghost {
+    background: rgba(255,255,255,.06); color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,.1); }
+  .btn-green { background: var(--accent2); color: #0d1117; }
+  .btn-green:hover { filter: brightness(1.1); }
+
+  /* ── MAIN ── */
+  main { padding: 24px 28px; max-width: 1700px; margin: 0 auto; }
+
+  /* ── UPLOAD ── */
+  #drop-zone {
+    border: 2px dashed var(--border); border-radius: 18px;
+    padding: 72px 40px; text-align: center; cursor: pointer;
+    transition: all .2s; background: var(--surface);
+  }
+  #drop-zone.drag-over { border-color: var(--accent); background: rgba(88,166,255,.06); }
+  #drop-zone:hover { border-color: var(--accent); }
+  .drop-icon { font-size: 52px; margin-bottom: 14px; }
+  .drop-title { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+  .drop-sub { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+  .drop-sub b { color: var(--accent); }
+  .drop-tags { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .drop-tag {
+    font-size: 11px; font-weight: 700; padding: 4px 14px;
+    border-radius: 999px; background: var(--surface2); color: var(--muted);
+  }
+
+  /* ── STAT CARDS ── */
+  #stats-grid {
+    display: grid; grid-template-columns: repeat(5,1fr); gap: 12px; margin-bottom: 20px;
+  }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px 18px;
+    position: relative; overflow: hidden;
+  }
+  .stat-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  }
+  .stat-card.total::before  { background: var(--accent); }
+  .stat-card.late::before   { background: var(--warn); }
+  .stat-card.missing::before { background: var(--pink); }
+  .stat-card.under::before  { background: var(--blue); }
+  .stat-card.ok::before     { background: var(--accent2); }
+  .stat-icon { font-size: 18px; margin-bottom: 6px; }
+  .stat-val { font-family: 'Syne', sans-serif; font-size: 30px; font-weight: 900; line-height: 1; }
+  .stat-label { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+
+  /* ── CONTROLS ── */
+  #controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .filter-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 999px; font-size: 12px; font-weight: 700;
+    cursor: pointer; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--muted); transition: all .15s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .filter-btn.active { color: var(--text); border-color: transparent; }
+  .filter-btn.active.all       { background: var(--accent); }
+  .filter-btn.active.late      { background: var(--warn); color: #0d1117; }
+  .filter-btn.active.missing   { background: var(--pink); color: #0d1117; }
+  .filter-btn.active.underworking { background: var(--blue); color: #0d1117; }
+  .filter-btn.active.ok        { background: var(--accent2); color: #0d1117; }
+  .filter-count {
+    background: rgba(0,0,0,.2); border-radius: 999px;
+    padding: 1px 7px; font-size: 11px;
+  }
+  #search-box {
+    margin-left: auto; padding: 8px 14px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text); font-size: 13px; font-family: 'DM Sans', sans-serif;
+    outline: none; width: 230px;
+  }
+  #search-box:focus { border-color: var(--accent); }
+
+  /* ── LEGEND ── */
+  #legend { font-size: 12px; color: var(--muted); display: flex; gap: 16px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  #record-count { font-weight: 700; color: var(--text); }
+
+  /* ── TABLE ── */
+  #table-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .tbl-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    padding: 11px 13px; text-align: left; font-size: 10px; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+    background: var(--surface2); border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  thead th:hover { color: var(--text); }
+  thead th.sorted { color: var(--accent); }
+  tbody tr { border-bottom: 1px solid rgba(48,54,61,.5); cursor: pointer; transition: background .1s; }
+  tbody tr:hover { background: rgba(88,166,255,.04); }
+  tbody tr.row-late    { border-left: 3px solid var(--warn); }
+  tbody tr.row-missing { border-left: 3px solid var(--pink); }
+  tbody tr.row-under   { border-left: 3px solid var(--blue); }
+  tbody tr.row-ok      { border-left: 3px solid transparent; }
+  td { padding: 10px 13px; vertical-align: middle; }
+
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  .name-cell { font-weight: 700; white-space: nowrap; }
+  .badge-cell { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted); }
+  .dept-cell { font-size: 11px; color: var(--muted); white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+
+  .shift-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  }
+
+  .time-ok   { color: var(--accent2); font-weight: 700; }
+  .time-late { color: var(--warn); font-weight: 700; }
+  .time-miss { color: var(--pink); font-weight: 700; }
+  .late-sub  { display: block; font-size: 10px; color: var(--warn); font-family: 'IBM Plex Mono', monospace; }
+
+  .summary-ok    { color: var(--accent2); font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
+  .summary-under { color: var(--blue);    font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
+  .summary-zero  { color: var(--muted);   font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
+
+  .sess-pill { background: rgba(88,166,255,.12); color: var(--accent); padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .break-pill { background: rgba(240,136,62,.12); color: var(--warn); padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+
+  .flag-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    margin: 2px;
+  }
+  .flag-late         { background: rgba(240,136,62,.18); color: var(--warn); }
+  .flag-missing      { background: rgba(255,126,182,.18); color: var(--pink); }
+  .flag-underworking { background: rgba(121,192,255,.18); color: var(--blue); }
+  .flag-ok           { background: rgba(63,185,80,.18);  color: var(--accent2); }
+
+  /* ── EXPANDED ROW ── */
+  .expanded-td { background: rgba(22,27,34,.8); padding: 12px 20px 18px 48px !important; }
+  .session-strip { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 6px; }
+  .sess-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 15px; min-width: 148px;
+    font-size: 12px; position: relative;
+  }
+  .sess-card.has-out { border-top: 3px solid var(--accent2); }
+  .sess-card.no-out  { border-top: 3px solid var(--pink); }
+  .sess-label { font-size: 10px; font-weight: 700; color: var(--accent); margin-bottom: 7px; letter-spacing: .06em; text-transform: uppercase; }
+  .sess-row { font-family: 'IBM Plex Mono', monospace; margin-bottom: 3px; font-size: 12px; }
+  .sess-row .lbl { color: var(--muted); font-size: 10px; }
+  .sess-dur { font-size: 10px; color: var(--muted); margin-top: 6px; border-top: 1px solid var(--border); padding-top: 5px; }
+
+  .arrow { font-size: 16px; color: var(--border); margin: 0 2px; align-self: center; }
+
+  .break-card {
+    background: rgba(240,136,62,.07); border: 1px dashed rgba(240,136,62,.4);
+    border-top: 3px solid var(--warn); border-radius: var(--radius);
+    padding: 10px 14px; min-width: 140px; font-size: 12px;
+  }
+  .break-label { font-size: 10px; font-weight: 700; color: var(--warn); margin-bottom: 6px; letter-spacing: .06em; text-transform: uppercase; }
+  .break-row { font-family: 'IBM Plex Mono', monospace; margin-bottom: 3px; font-size: 12px; }
+  .break-row .lbl { color: rgba(240,136,62,.6); font-size: 10px; }
+  .break-dur { font-size: 11px; margin-top: 5px; border-top: 1px solid rgba(240,136,62,.2); padding-top: 4px; font-weight: 800; }
+  .break-long { color: var(--danger); }
+  .break-ok   { color: var(--warn); }
+
+  .empty-row td { text-align: center; padding: 48px; color: var(--muted); }
+
+  /* ── FOOTER ── */
+  footer { font-size: 11px; color: var(--muted); margin-top: 12px; text-align: right; }
+
+  /* ── LOADING ── */
+  #loading { text-align: center; padding: 64px; color: var(--muted); display: none; }
+  .spinner { font-size: 36px; display: block; margin-bottom: 12px; animation: spin 1.2s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── CSV MODAL ── */
+  #csv-modal {
+    display: none; position: fixed; inset: 0; z-index: 999;
+    background: rgba(0,0,0,.75); backdrop-filter: blur(4px);
+    align-items: center; justify-content: center;
+  }
+  #csv-modal.open { display: flex; }
+  .modal-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; width: min(820px, 96vw); max-height: 80vh;
+    display: flex; flex-direction: column; overflow: hidden;
+    box-shadow: 0 24px 64px rgba(0,0,0,.6);
+  }
+  .modal-header {
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .modal-title { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 800; }
+  .modal-close {
+    background: none; border: 1px solid var(--border); color: var(--muted);
+    font-size: 16px; cursor: pointer; border-radius: 6px;
+    width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+  }
+  .modal-close:hover { color: var(--text); border-color: var(--text); }
+  #csv-textarea {
+    flex: 1; overflow: auto; padding: 16px 20px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    background: var(--bg); color: var(--muted); line-height: 1.6;
+    border: none; outline: none; resize: none; white-space: pre;
+    min-height: 300px;
+  }
+  .modal-footer {
+    padding: 12px 20px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 12px; color: var(--muted);
+  }
+  #copy-btn {
+    padding: 8px 20px; border-radius: var(--radius); border: none;
+    background: var(--accent2); color: #0d1117; font-size: 13px;
+    font-weight: 700; font-family: 'DM Sans', sans-serif; cursor: pointer;
+    transition: all .15s;
+  }
+  #copy-btn:hover { filter: brightness(1.1); }
+  #copy-btn.copied { background: var(--accent); color: white; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div>
+    <div class="header-left">
+      <div class="logo">🕐 Attend<span>ance</span></div>
+      <div class="badge-pill">Multi In/Out · Auto Breaks</div>
+    </div>
+    <div class="filename" id="filename-label" style="display:none"></div>
+  </div>
+  <div class="header-right" id="header-actions" style="display:none">
+    <label class="btn btn-ghost" style="cursor:pointer">
+      📂 New File
+      <input type="file" accept=".xlsx,.xls" id="file-input-top" style="display:none">
+    </label>
+    <button class="btn btn-green" id="export-btn">📋 Copy CSV</button>
+  </div>
+</header>
+
+<main>
+  <!-- UPLOAD -->
+  <div id="drop-zone">
+    <div class="drop-icon">📊</div>
+    <div class="drop-title">Drop your Attendance XLSX here</div>
+    <div class="drop-sub">
+      Reads: Badge · Name · Department · Date · Summary Time · Check In/Out 1–4<br>
+      <b>✦ Breaks auto-computed · Excel decimal times supported</b>
+    </div>
+    <div class="drop-tags">
+      <span class="drop-tag">🟡 Late Arrival</span>
+      <span class="drop-tag">💗 Missing Punch</span>
+      <span class="drop-tag">🔵 Underworking</span>
+      <span class="drop-tag">☕ Auto Breaks</span>
+    </div>
+    <input type="file" accept=".xlsx,.xls" id="file-input" style="display:none">
+  </div>
+
+  <!-- LOADING -->
+  <div id="loading"><span class="spinner">⏳</span>Parsing file…</div>
+
+  <!-- DASHBOARD (hidden until file loaded) -->
+  <div id="dashboard" style="display:none">
+    <!-- Stat cards -->
+    <div id="stats-grid">
+      <div class="stat-card total"><div class="stat-icon">👥</div><div class="stat-val" id="s-total">0</div><div class="stat-label">Total Records</div></div>
+      <div class="stat-card late"><div class="stat-icon">🟡</div><div class="stat-val" id="s-late">0</div><div class="stat-label">Late Arrival</div></div>
+      <div class="stat-card missing"><div class="stat-icon">💗</div><div class="stat-val" id="s-missing">0</div><div class="stat-label">Missing Punch</div></div>
+      <div class="stat-card under"><div class="stat-icon">🔵</div><div class="stat-val" id="s-under">0</div><div class="stat-label">Underworking</div></div>
+      <div class="stat-card ok"><div class="stat-icon">✅</div><div class="stat-val" id="s-ok">0</div><div class="stat-label">All OK</div></div>
+    </div>
+
+    <!-- Controls -->
+    <div id="controls">
+      <button class="filter-btn active all" data-filter="all">📋 All <span class="filter-count" id="fc-all">0</span></button>
+      <button class="filter-btn late"  data-filter="late">🟡 Late <span class="filter-count" id="fc-late">0</span></button>
+      <button class="filter-btn missing" data-filter="missing">💗 Missing <span class="filter-count" id="fc-missing">0</span></button>
+      <button class="filter-btn underworking" data-filter="underworking">🔵 Underworking <span class="filter-count" id="fc-under">0</span></button>
+      <button class="filter-btn ok" data-filter="ok">✅ OK <span class="filter-count" id="fc-ok">0</span></button>
+      <input type="text" id="search-box" placeholder="🔍  Name, Badge or Dept…">
+    </div>
+
+    <!-- Legend -->
+    <div id="legend">
+      <span id="record-count">0 records</span>
+      <span>🟡 Late</span><span>💗 Missing Punch</span><span>🔵 Underworking &lt;9h</span><span>☕ Breaks = gaps between sessions</span>
+      <span style="margin-left:auto;font-size:11px">Click row → sessions & breaks</span>
+    </div>
+
+    <!-- Table -->
+    <div id="table-wrap">
+      <div class="tbl-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th data-col="badge">Badge <span class="sort-arrow">⇅</span></th>
+              <th data-col="name">Name <span class="sort-arrow">⇅</span></th>
+              <th data-col="dept">Dept <span class="sort-arrow">⇅</span></th>
+              <th data-col="date">Date <span class="sort-arrow">⇅</span></th>
+              <th data-col="shift">Shift <span class="sort-arrow">⇅</span></th>
+              <th>First In</th>
+              <th>Last Out</th>
+              <th data-col="summaryMins">Summary <span class="sort-arrow">⇅</span></th>
+              <th>Sessions</th>
+              <th>Breaks</th>
+              <th>Flags</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <footer>Breaks = gap between Check Out N → Check In N+1 · Underworking &lt; 9h · Missing = last session has no Check Out</footer>
+  </div>
+</main>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  TIME UTILITIES
+// ══════════════════════════════════════════════════════
+function tdToRawMins(val) {
+  if (val === null || val === undefined || val === '') return null;
+  const n = Number(val);
+  if (!isNaN(n) && typeof val !== 'boolean') {
+    if (n === 0) return 0;
+    return Math.round(n * 1440);
+  }
+  const s = String(val).trim();
+  if (!s || s === 'NaT' || s === 'nan') return null;
+  const m = s.match(/(\d+)\s+days?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/i);
+  if (m) return parseInt(m[1])*1440 + parseInt(m[2])*60 + parseInt(m[3]);
+  const m2 = s.match(/^(\d{1,2}):(\d{2})/);
+  if (m2) return parseInt(m2[1])*60 + parseInt(m2[2]);
+  return null;
+}
+
+function tdToClockMins(val) {
+  const r = tdToRawMins(val);
+  return r === null ? null : r % 1440;
+}
+
+function fmtDuration(mins) {
+  if (mins === null || mins === undefined) return '—';
+  const neg = mins < 0, abs = Math.abs(mins);
+  return `${neg?'-':''}${String(Math.floor(abs/60)).padStart(2,'0')}:${String(abs%60).padStart(2,'0')}`;
+}
+
+function fmtClock(val) {
+  if (val === null || val === undefined || val === '') return null;
+  const n = Number(val);
+  if (!isNaN(n) && typeof val !== 'boolean') {
+    if (n === 0) return null;
+    const t = Math.round(n*1440) % 1440;
+    return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`;
+  }
+  const s = String(val).trim();
+  if (!s || s === 'NaT' || s === 'nan') return null;
+  const m = s.match(/(\d+)\s+days?\s+(\d{1,2}):(\d{2})/i);
+  if (m) return `${String((parseInt(m[2])+parseInt(m[1])*24)%24).padStart(2,'0')}:${m[3]}`;
+  const m2 = s.match(/^(\d{1,2}):(\d{2})/);
+  if (m2) return `${m2[1].padStart(2,'0')}:${m2[2]}`;
+  return null;
+}
+
+// ══════════════════════════════════════════════════════
+//  SHIFT DETECTION
+// ══════════════════════════════════════════════════════
+function detectShift(c) {
+  if (c===null) return 'Unknown';
+  if (c>=120&&c<420) return 'Early/Night';
+  if (c>=420&&c<540) return 'Morning';
+  if (c>=540&&c<660) return 'Mid Morning';
+  if (c>=660&&c<780) return 'Mid';
+  if (c>=780&&c<960) return 'Evening';
+  return 'Unknown';
+}
+const SHIFT_START = {'Early/Night':420,'Morning':420,'Mid Morning':540,'Mid':660,'Evening':780,'Unknown':9999};
+const SHIFT_STYLE = {
+  'Early/Night': {bg:'rgba(49,46,129,.5)',fg:'#c7d2fe',icon:'🌙'},
+  'Morning':     {bg:'rgba(6,78,59,.4)', fg:'#6ee7b7',icon:'🌅'},
+  'Mid Morning': {bg:'rgba(120,53,15,.4)',fg:'#fcd34d',icon:'☀️'},
+  'Mid':         {bg:'rgba(124,45,18,.4)',fg:'#fdba74',icon:'🌤'},
+  'Evening':     {bg:'rgba(88,28,135,.4)',fg:'#d8b4fe',icon:'🌆'},
+  'Unknown':     {bg:'rgba(30,41,59,.5)', fg:'#94a3b8',icon:'❓'},
+};
+
+// ══════════════════════════════════════════════════════
+//  PARSER
+// ══════════════════════════════════════════════════════
+function parseFile(buf) {
+  const wb = XLSX.read(buf, {type:'array'});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const raw = XLSX.utils.sheet_to_json(ws, {defval:null, raw:true});
+  const out = [];
+  raw.forEach((row, idx) => {
+    const badge = String(row['User BadgeNumber']??'').trim();
+    const name  = String(row['Employee Name']??'').trim();
+    const dept  = String(row['Department Name']??'').trim();
+    if (!badge||badge==='NaN'||badge.toLowerCase()==='total') return;
+
+    let date = '';
+    const rd = row['Date'];
+    if (rd instanceof Date) { date = rd.toISOString().slice(0,10); }
+    else if (typeof rd==='number') {
+      date = new Date(Math.round((rd-25569)*86400*1000)).toISOString().slice(0,10);
+    } else { date = String(rd??'').trim(); }
+
+    const summaryRaw  = row['Summary Time']??null;
+    const summaryMins = tdToRawMins(summaryRaw);
+
+    const sessions = [];
+    for (let i=1;i<=4;i++) {
+      const inRaw  = row[`Check In ${i}`]??null;
+      const outRaw = row[`Check Out ${i}`]??null;
+      const totRaw = row[`Total ${i}`]??null;
+      if (inRaw===null||inRaw===undefined||inRaw===''||inRaw===0) continue;
+      sessions.push({
+        num:i, inRaw, outRaw,
+        inFmt:  fmtClock(inRaw),
+        outFmt: fmtClock(outRaw),
+        inMins:  tdToRawMins(inRaw),
+        outMins: tdToRawMins(outRaw),
+        totMins: tdToRawMins(totRaw),
+        totFmt:  totRaw!==null&&totRaw!==undefined ? fmtDuration(tdToRawMins(totRaw)) : null,
+      });
+    }
+
+    const breaks = [];
+    for (let i=0;i<sessions.length-1;i++) {
+      const p=sessions[i], n=sessions[i+1];
+      if (p.outMins!==null&&n.inMins!==null) {
+        let gap = n.inMins - p.outMins;
+        if (gap<0) gap+=1440;
+        breaks.push({num:i+1, startFmt:p.outFmt, endFmt:n.inFmt, durMins:gap, durFmt:fmtDuration(gap)});
+      }
+    }
+
+    const firstInClock = sessions.length>0 ? tdToClockMins(sessions[0].inRaw) : null;
+    const shift  = detectShift(firstInClock);
+    const start  = SHIFT_START[shift]??9999;
+    const missingPunch = sessions.length>0 && (sessions[sessions.length-1].outRaw===null||sessions[sessions.length-1].outRaw===undefined||sessions[sessions.length-1].outRaw==='');
+    const isLate = firstInClock!==null && firstInClock>start+15;
+    const lateByMins = isLate ? firstInClock-start : 0;
+    const underworking = summaryMins!==null&&summaryMins>0&&summaryMins<540&&!missingPunch;
+    const flags = [];
+    if (isLate) flags.push('late');
+    if (missingPunch) flags.push('missing');
+    if (underworking) flags.push('underworking');
+    if (!flags.length) flags.push('ok');
+
+    out.push({_id:idx, badge, name, dept, date, shift, summaryMins,
+      summaryFmt: fmtDuration(summaryMins), sessions, breaks,
+      isLate, lateByMins, missingPunch, underworking, flags});
+  });
+  return out;
+}
+
+// ══════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════
+let allRecords = [], filtered = [], expandedId = null;
+let currentFilter = 'all', currentSearch = '', sortCol = 'name', sortAsc = true;
+
+// ══════════════════════════════════════════════════════
+//  RENDER
+// ══════════════════════════════════════════════════════
+function applyFilters() {
+  let r = allRecords;
+  if (currentFilter!=='all') r = r.filter(x=>x.flags.includes(currentFilter));
+  if (currentSearch.trim()) {
+    const q = currentSearch.trim().toLowerCase();
+    r = r.filter(x=>x.name.toLowerCase().includes(q)||x.badge.toLowerCase().includes(q)||x.dept.toLowerCase().includes(q));
+  }
+  r = [...r].sort((a,b)=>{
+    let av=a[sortCol]??'', bv=b[sortCol]??'';
+    if (typeof av==='number'&&typeof bv==='number') return sortAsc?av-bv:bv-av;
+    return sortAsc?String(av).localeCompare(String(bv)):String(bv).localeCompare(String(av));
+  });
+  filtered = r;
+  document.getElementById('record-count').textContent = `${r.length} record${r!==1?'s':''}`;
+  renderTable();
+}
+
+function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function renderTable() {
+  const tbody = document.getElementById('tbody');
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="11">No matching records</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filtered.map(r => {
+    const exp = expandedId === r._id;
+    const ss = SHIFT_STYLE[r.shift]??SHIFT_STYLE['Unknown'];
+    const firstIn = r.sessions[0]?.inFmt??null;
+    const lastSess = r.sessions[r.sessions.length-1];
+    const lastOut = !r.missingPunch ? lastSess?.outFmt : null;
+
+    const rowClass = r.flags.includes('missing')?'row-missing':r.flags.includes('late')?'row-late':r.flags.includes('underworking')?'row-under':'row-ok';
+
+    const firstInHtml = firstIn
+      ? `<span class="${r.isLate?'time-late':'time-ok'}">${esc(firstIn)}${r.isLate?`<span class="late-sub">+${r.lateByMins}m late</span>`:''}</span>`
+      : `<span class="time-miss">—</span>`;
+
+    const lastOutHtml = r.missingPunch
+      ? `<span class="time-miss">Missing !</span>`
+      : lastOut ? `<span class="mono" style="color:var(--muted)">${esc(lastOut)}</span>` : `<span style="color:var(--border)">—</span>`;
+
+    const sumClass = r.summaryMins===0?'summary-zero':r.summaryMins!==null&&r.summaryMins<540?'summary-under':'summary-ok';
+
+    const flagsHtml = r.flags.map(f=>({
+      late:`<span class="flag-tag flag-late">🟡 Late</span>`,
+      missing:`<span class="flag-tag flag-missing">💗 Missing</span>`,
+      underworking:`<span class="flag-tag flag-underworking">🔵 Underworking</span>`,
+      ok:`<span class="flag-tag flag-ok">✅ OK</span>`,
+    }[f]||'')).join('');
+
+    let expandedHtml = '';
+    if (exp) {
+      const strip = r.sessions.map((s,i)=>{
+        const bc = r.breaks[i];
+        const sessCard = `
+          <div class="sess-card ${s.outRaw?'has-out':'no-out'}">
+            <div class="sess-label">🏃 Session ${s.num}</div>
+            <div class="sess-row"><span class="lbl">IN &nbsp;&nbsp;</span><span style="color:var(--accent2)">${esc(s.inFmt??'—')}</span></div>
+            <div class="sess-row"><span class="lbl">OUT &nbsp;</span>${s.outFmt?`<span style="color:var(--text)">${esc(s.outFmt)}</span>`:`<span style="color:var(--pink)">Missing!</span>`}</div>
+            ${s.totFmt?`<div class="sess-dur">Duration: <b>${esc(s.totFmt)}</b></div>`:''}
+          </div>`;
+        const breakCard = bc?`
+          <div class="arrow">→</div>
+          <div class="break-card">
+            <div class="break-label">☕ Break ${bc.num}</div>
+            <div class="break-row"><span class="lbl">START </span>${esc(bc.startFmt)}</div>
+            <div class="break-row"><span class="lbl">END &nbsp;&nbsp;</span>${esc(bc.endFmt)}</div>
+            <div class="break-dur ${bc.durMins>60?'break-long':'break-ok'}">${esc(bc.durFmt)}${bc.durMins>60?' ⚠ Long':''}</div>
+          </div>`:''
+        return sessCard + breakCard;
+      }).join('');
+      expandedHtml = `
+        <tr data-expanded="${r._id}">
+          <td colspan="11" class="expanded-td">
+            <div class="session-strip">${strip}</div>
+          </td>
+        </tr>`;
+    }
+
+    return `
+      <tr class="${rowClass}" data-id="${r._id}">
+        <td class="badge-cell">${esc(r.badge)}</td>
+        <td class="name-cell">${esc(r.name)}</td>
+        <td class="dept-cell" title="${esc(r.dept)}">${esc(r.dept)||'—'}</td>
+        <td style="color:var(--muted);font-size:12px;white-space:nowrap">${esc(r.date)}</td>
+        <td><span class="shift-pill" style="background:${ss.bg};color:${ss.fg}">${ss.icon} ${esc(r.shift)}</span></td>
+        <td>${firstInHtml}</td>
+        <td>${lastOutHtml}</td>
+        <td><span class="${sumClass}">${esc(r.summaryFmt)}</span></td>
+        <td><span class="sess-pill">🏃 ${r.sessions.length} ${exp?'▲':'▼'}</span></td>
+        <td>${r.breaks.length?`<span class="break-pill">☕ ${r.breaks.length}</span>`:`<span style="color:var(--border)">—</span>`}</td>
+        <td>${flagsHtml}</td>
+      </tr>${expandedHtml}`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════
+//  STATS / CONTROLS UPDATE
+// ══════════════════════════════════════════════════════
+function updateStats() {
+  const total = allRecords.length;
+  const late  = allRecords.filter(r=>r.flags.includes('late')).length;
+  const miss  = allRecords.filter(r=>r.flags.includes('missing')).length;
+  const under = allRecords.filter(r=>r.flags.includes('underworking')).length;
+  const ok    = allRecords.filter(r=>r.flags.length===1&&r.flags[0]==='ok').length;
+  document.getElementById('s-total').textContent   = total;
+  document.getElementById('s-late').textContent    = late;
+  document.getElementById('s-missing').textContent = miss;
+  document.getElementById('s-under').textContent   = under;
+  document.getElementById('s-ok').textContent      = ok;
+  document.getElementById('fc-all').textContent    = total;
+  document.getElementById('fc-late').textContent   = late;
+  document.getElementById('fc-missing').textContent= miss;
+  document.getElementById('fc-under').textContent  = under;
+  document.getElementById('fc-ok').textContent     = ok;
+}
+
+// ══════════════════════════════════════════════════════
+//  EXPORT — handled by modal script below
+// ══════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════
+//  FILE LOAD
+// ══════════════════════════════════════════════════════
+function loadFile(file) {
+  if (!file) return;
+  document.getElementById('drop-zone').style.display='none';
+  document.getElementById('loading').style.display='block';
+  document.getElementById('dashboard').style.display='none';
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      allRecords = parseFile(e.target.result);
+      expandedId = null; currentFilter='all'; currentSearch='';
+      document.getElementById('search-box').value='';
+      document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelector('[data-filter="all"]').classList.add('active');
+      updateStats();
+      applyFilters();
+      document.getElementById('loading').style.display='none';
+      document.getElementById('dashboard').style.display='block';
+      document.getElementById('header-actions').style.display='flex';
+      const fl=document.getElementById('filename-label');
+      fl.textContent='📄 '+file.name; fl.style.display='block';
+    } catch(err) {
+      alert('Parse error: '+err.message);
+      document.getElementById('loading').style.display='none';
+      document.getElementById('drop-zone').style.display='block';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ══════════════════════════════════════════════════════
+//  EVENT LISTENERS
+// ══════════════════════════════════════════════════════
+// Drop zone
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('click',()=>document.getElementById('file-input').click());
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');loadFile(e.dataTransfer.files[0]);});
+document.getElementById('file-input').addEventListener('change',e=>loadFile(e.target.files[0]));
+document.getElementById('file-input-top').addEventListener('change',e=>{
+  document.getElementById('dashboard').style.display='none';
+  loadFile(e.target.files[0]);
+});
+
+// Filter buttons
+document.querySelectorAll('.filter-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter=btn.dataset.filter;
+    expandedId=null;
+    applyFilters();
+  });
+});
+
+// Search
+document.getElementById('search-box').addEventListener('input',e=>{
+  currentSearch=e.target.value;
+  expandedId=null;
+  applyFilters();
+});
+
+// Export handled by modal script
+
+// Table click (row expand + sort)
+document.querySelector('table').addEventListener('click',e=>{
+  // Sort header
+  const th = e.target.closest('th[data-col]');
+  if (th) {
+    const col=th.dataset.col;
+    if (sortCol===col) sortAsc=!sortAsc; else {sortCol=col;sortAsc=true;}
+    document.querySelectorAll('thead th').forEach(t=>t.classList.remove('sorted'));
+    th.classList.add('sorted');
+    th.querySelector('.sort-arrow').textContent = sortAsc?'▲':'▼';
+    applyFilters(); return;
+  }
+  // Row expand
+  const tr = e.target.closest('tr[data-id]');
+  if (tr) {
+    const id=parseInt(tr.dataset.id);
+    expandedId = expandedId===id?null:id;
+    renderTable();
+  }
+});
+</script>
+
+<!-- CSV MODAL -->
+<div id="csv-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">📋 CSV Export — Copy & paste into Excel or a .csv file</div>
+      <button class="modal-close" id="modal-close-btn">✕</button>
+    </div>
+    <textarea id="csv-textarea" readonly spellcheck="false"></textarea>
+    <div class="modal-footer">
+      <span id="csv-row-count"></span>
+      <button id="copy-btn">📋 Copy All</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// CSV modal logic
+function buildCSV() {
+  const e = v=>`"${String(v??'').replace(/"/g,'""')}"`;
+  const hdr = ['Badge','Name','Department','Date','Shift','Summary Time',
+    'Check In 1','Check Out 1','Duration 1','Break 1 Start','Break 1 End','Break 1 Duration',
+    'Check In 2','Check Out 2','Duration 2','Break 2 Start','Break 2 End','Break 2 Duration',
+    'Check In 3','Check Out 3','Duration 3','Break 3 Start','Break 3 End','Break 3 Duration',
+    'Check In 4','Check Out 4','Duration 4','Flags'];
+  const lines = [hdr.map(e).join(','), ...filtered.map(r=>{
+    const cells=[r.badge,r.name,r.dept,r.date,r.shift,r.summaryFmt];
+    for(let i=0;i<4;i++){
+      const s=r.sessions[i],b=r.breaks[i];
+      cells.push(s?.inFmt??'',s?.outFmt??'',s?.totFmt??'');
+      cells.push(b?.startFmt??'',b?.endFmt??'',b?.durFmt??'');
+    }
+    cells.push(r.flags.join('|'));
+    return cells.map(e).join(',');
+  })];
+  return lines.join('\n');
+}
+
+document.getElementById('export-btn').addEventListener('click', ()=>{
+  const csv = buildCSV();
+  document.getElementById('csv-textarea').value = csv;
+  document.getElementById('csv-row-count').textContent = `${filtered.length} rows · Select all → Ctrl+A, then Ctrl+C`;
+  document.getElementById('csv-modal').classList.add('open');
+  document.getElementById('copy-btn').textContent = '📋 Copy All';
+  document.getElementById('copy-btn').classList.remove('copied');
+});
+
+document.getElementById('modal-close-btn').addEventListener('click', ()=>{
+  document.getElementById('csv-modal').classList.remove('open');
+});
+
+document.getElementById('csv-modal').addEventListener('click', e=>{
+  if (e.target === document.getElementById('csv-modal'))
+    document.getElementById('csv-modal').classList.remove('open');
+});
+
+document.getElementById('copy-btn').addEventListener('click', ()=>{
+  const ta = document.getElementById('csv-textarea');
+  ta.select();
+  try {
+    navigator.clipboard.writeText(ta.value).then(()=>{
+      const btn = document.getElementById('copy-btn');
+      btn.textContent = '✅ Copied!';
+      btn.classList.add('copied');
+      setTimeout(()=>{ btn.textContent='📋 Copy All'; btn.classList.remove('copied'); }, 2000);
+    }).catch(()=> fallbackCopy(ta));
+  } catch(e) { fallbackCopy(ta); }
+});
+
+function fallbackCopy(ta) {
+  document.execCommand('copy');
+  const btn = document.getElementById('copy-btn');
+  btn.textContent = '✅ Copied!';
+  btn.classList.add('copied');
+  setTimeout(()=>{ btn.textContent='📋 Copy All'; btn.classList.remove('copied'); }, 2000);
+}
+</script>
+</body>
+</html>
